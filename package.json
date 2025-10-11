@@ -1,6 +1,6 @@
 {
   "name": "@sourceregistry/node-totp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A library used to validate generateURI and generate Timed One-Time Password",
   "main": "./dist/index.es.js",
   "module": "./dist/index.es.js",

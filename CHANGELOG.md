@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/SourceRegistry/node-totp/compare/v1.0.1...v1.0.2) (2025-10-11)
+
+
+### Bug Fixes
+
+* secret input ([c2dcdee](https://github.com/SourceRegistry/node-totp/commit/c2dcdee746c1fafa62fe8625c294b53ec7541c53))
+
 ## [1.0.1](https://github.com/SourceRegistry/node-totp/compare/v1.0.0...v1.0.1) (2025-10-11)
 
 
