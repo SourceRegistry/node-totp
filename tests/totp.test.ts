@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { generateURI, verifyToken, generateToken, base32 } from '../src';
-import { randomBytes } from "node:crypto";
+import { randomBytes } from "crypto";
 
 // RFC 6238 Appendix B test vectors (SHA1, 8 digits)
 const RFC6238_VECTORS = [
