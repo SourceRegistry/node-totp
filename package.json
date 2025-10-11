@@ -1,0 +1,94 @@
+{
+  "name": "@sourceregistry/node-totp",
+  "version": "1.0.0",
+  "description": "A library used to validate generateURI and generate Timed One-Time Password",
+  "main": "./dist/index.es.js",
+  "module": "./dist/index.es.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.es.js",
+      "require": "./dist/index.cjs.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SourceRegistry/node-totp.git"
+  },
+  "keywords": [
+    "totp",
+    "One-Time Password",
+    "TOTP",
+    "Security",
+    "otp",
+    "rfc6238",
+    "6238",
+    "base32",
+    "rfc4648",
+    "4648"
+  ],
+  "author": "A.P.A. Slaa (a.p.a.slaa@projectsource.nl)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/SourceRegistry/node-totp/issues"
+  },
+  "homepage": "https://github.com/SourceRegistry/node-totp#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@vitest/ui": "^3.2.4",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.3",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^3.2.4",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/release-notes-generator": "^14.0.3",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/npm": "^12.0.2",
+    "@semantic-release/git": "^10.0.1"
+  },
+  "release": {
+    "branches": [
+      "main"
+    ],
+    "plugins": [
+      [
+        "@semantic-release/commit-analyzer"
+      ],
+      [
+        "@semantic-release/release-notes-generator"
+      ],
+      [
+        "@semantic-release/changelog"
+      ],
+      [
+        "@semantic-release/npm"
+      ],
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "package.json",
+            "CHANGELOG.md"
+          ],
+          "message": "node-totp(release): 🚀 ${nextRelease.version} \n\n${nextRelease.notes}"
+        }
+      ]
+    ]
+  }
+}
