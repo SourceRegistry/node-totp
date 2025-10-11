@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/SourceRegistry/node-totp/compare/v1.0.0...v1.0.1) (2025-10-11)
+
+
+### Bug Fixes
+
+* added missing dev dependency ([09700c0](https://github.com/SourceRegistry/node-totp/commit/09700c05877ba7a4e64e71c1418b2f9a1ec840b4))
+
 # 1.0.0 (2025-10-11)
 
 
