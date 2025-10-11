@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateURI, verifyToken, generateToken, base32 } from '../src';
+import totp, { generateURI, verifyToken, generateToken, base32 } from '../src';
 import { randomBytes } from "crypto";
 
 // RFC 6238 Appendix B test vectors (SHA1, 8 digits)
@@ -117,6 +117,53 @@ describe('TOTP Library', () => {
             expect(uri).toContain('My%20App%20Inc.');
             expect(uri).toContain('user%2Btest%40example.com');
         });
+
+        it('should validate secret format strictly', () => {
+            // Test via generateURI with invalid secrets
+            expect(() => generateURI({
+                issuer: 'Test',
+                account: 'test',
+                secret: ''
+            })).toThrow('Invalid secret');
+
+            expect(() => generateURI({
+                issuer: 'Test',
+                account: 'test',
+                secret: 'invalid!'
+            })).toThrow('Invalid secret');
+
+            expect(() => generateURI({
+                issuer: 'Test',
+                account: 'test',
+                secret: 'abc123' // lowercase + numbers outside 2-7
+            })).toThrow('Invalid secret');
+
+            expect(() => generateURI({
+                issuer: 'Test',
+                account: 'test',
+                secret: 'ABCDEFGH1' // contains '1' which is invalid
+            })).toThrow('Invalid secret');
+
+            expect(() => generateURI({
+                issuer: 'Test',
+                account: 'test',
+                secret: 'ABCDEFGH8' // contains '8' which is invalid
+            })).toThrow('Invalid secret');
+
+            // Valid secrets should work
+            expect(() => generateURI({
+                issuer: 'Test',
+                account: 'test',
+                secret: 'JBSWY3DPEHPK3PXP'
+            })).not.toThrow();
+
+            expect(() => generateURI({
+                issuer: 'Test',
+                account: 'test',
+                secret: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567' // full charset
+            })).not.toThrow();
+        });
+
     });
 
     describe('generateToken', () => {
@@ -250,6 +297,43 @@ describe('TOTP Library', () => {
             // Also: token8 passed to 6-digit verifier → fail
             expect(verifyToken(token8, secret, { digits: 6, now: time })).toBe(false);
         });
+
+        it('should reject tokens with invalid format', () => {
+            const secret = 'JBSWY3DPEHPK3PXP';
+
+            // Too short (< 6 digits)
+            expect(verifyToken('12345', secret)).toBe(false);
+            expect(verifyToken('1234', secret)).toBe(false);
+            expect(verifyToken('123', secret)).toBe(false);
+            expect(verifyToken('12', secret)).toBe(false);
+            expect(verifyToken('1', secret)).toBe(false);
+            expect(verifyToken('', secret)).toBe(false);
+
+            // Too long (> 8 digits)
+            expect(verifyToken('123456789', secret)).toBe(false);
+            expect(verifyToken('1234567890', secret)).toBe(false);
+            expect(verifyToken('123456789012345', secret)).toBe(false);
+
+            // Non-digit characters
+            expect(verifyToken('12345a', secret)).toBe(false);
+            expect(verifyToken('123456!', secret)).toBe(false);
+            expect(verifyToken('123 456', secret)).toBe(false);
+            expect(verifyToken('123-456', secret)).toBe(false);
+            expect(verifyToken('abcdef', secret)).toBe(false);
+            expect(verifyToken('12.345', secret)).toBe(false);
+        });
+
+        it('should validate secret format in verifyToken', () => {
+            // Empty/invalid secrets
+            expect(() => verifyToken('123456', '')).toThrow('Invalid secret');
+            expect(() => verifyToken('123456', 'invalid!')).toThrow('Invalid secret');
+            expect(() => verifyToken('123456', 'abc123')).toThrow('Invalid secret');
+            expect(() => verifyToken('123456', 'ABCDEFGH1')).toThrow('Invalid secret');
+
+            // Valid secret should not throw (but token will be invalid)
+            expect(() => verifyToken('123456', 'JBSWY3DPEHPK3PXP')).not.toThrow();
+        });
+
     });
 
     describe('Integration', () => {
@@ -272,6 +356,43 @@ describe('TOTP Library', () => {
                 window: 1,
             });
             expect(isValid).toBe(true);
+        });
+    });
+    describe('Validation Methods', () => {
+        it('should validate secret format correctly', () => {
+            const validSecrets = [
+                'A',
+                'Z',
+                '2',
+                '7',
+                'JBSWY3DPEHPK3PXP',
+                'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567',
+                'MFRGGZDFMZTWQ2LJ'
+            ];
+
+            const invalidSecrets = [
+                '',
+                ' ',
+                'a', // lowercase
+                '1', // invalid digit
+                '8', // invalid digit
+                '9', // invalid digit
+                '0', // invalid digit
+                'ABC DEF', // space
+                'ABC-DEF', // hyphen
+                'ABC_DEF', // underscore
+                'ABCDEFGH!', // special char
+                null as any,
+                undefined as any
+            ];
+
+            for (const secret of validSecrets) {
+                expect(() => totp.validate.secret(secret)).not.toThrow();
+            }
+
+            for (const secret of invalidSecrets) {
+                expect(() => totp.validate.secret(secret)).toThrow('Invalid secret');
+            }
         });
     });
 });

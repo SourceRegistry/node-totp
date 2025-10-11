@@ -127,7 +127,7 @@ const totp = {
         this.validate.period(period);
 
         let secret: string;
-        if (inputSecret) {
+        if (inputSecret !== undefined) {
             secret = this.helpers.normalizeSecret(inputSecret);
             this.validate.secret(secret);
         } else {
