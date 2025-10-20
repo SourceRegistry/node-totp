@@ -163,12 +163,12 @@ const totp = {
             window = 1,
             period = 30,
             algorithm = 'SHA1',
-            digits = 6, // ← DEFAULT TO 6, NOT token.length!
+            digits = 6,
             now: nowOpt
         } = options;
 
         if (!/^\d{6,8}$/.test(token)) return false;
-        if (token.length !== digits) return false; // ← CRITICAL: enforce digit length
+        if (token.length !== digits) return false;
 
         secret = this.helpers.normalizeSecret(secret);
         this.validate.secret(secret);
