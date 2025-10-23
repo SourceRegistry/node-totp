@@ -229,6 +229,18 @@ const totp = {
 };
 
 export default totp;
+
+/**
+ * Generates an otpauth URL that when opened launches any capable password manager that supports TOTP.
+ */
 export const generateURI = totp.generateURI.bind(totp);
+
+/**
+ * Verifies a token based on the configuration provided.
+ */
 export const verifyToken = totp.verifyToken.bind(totp);
+
+/**
+ * Generates a token just like a password manager.
+ */
 export const generateToken = totp.generateToken.bind(totp);
