@@ -45,7 +45,7 @@
   "bugs": {
     "url": "https://github.com/SourceRegistry/node-totp/issues"
   },
-  "homepage": "https://github.com/SourceRegistry/node-totp#readme",
+  "homepage": "https://sourceregistry.github.io/node-totp",
   "publishConfig": {
     "access": "public"
   },
