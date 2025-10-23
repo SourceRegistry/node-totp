@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/SourceRegistry/node-totp/compare/v1.0.3...v1.0.4) (2025-10-23)
+
+
+### Bug Fixes
+
+* homepage to documentation ([c082b94](https://github.com/SourceRegistry/node-totp/commit/c082b94bcfa81bdd0c729cab9740a9dc167d15b3))
+
 ## [1.0.3](https://github.com/SourceRegistry/node-totp/compare/v1.0.2...v1.0.3) (2025-10-20)
 
 
