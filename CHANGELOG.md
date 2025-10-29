@@ -1,3 +1,10 @@
+## [1.0.5](https://github.com/SourceRegistry/node-totp/compare/v1.0.4...v1.0.5) (2025-10-29)
+
+
+### Bug Fixes
+
+* Update index.ts comment ([bd23c67](https://github.com/SourceRegistry/node-totp/commit/bd23c6759eee2e415ae1f110ba2fd820f6065baa))
+
 ## [1.0.4](https://github.com/SourceRegistry/node-totp/compare/v1.0.3...v1.0.4) (2025-10-23)
 
 
