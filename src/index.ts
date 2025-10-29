@@ -155,7 +155,7 @@ const totp = {
             window: number;
             period: number;
             algorithm: 'SHA1' | 'SHA256' | 'SHA512';
-            digits: 6 | 7 | 8; // ← ADD THIS
+            digits: 6 | 7 | 8;
             now: number;
         }> = {}
     ): boolean {
