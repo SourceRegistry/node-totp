@@ -49,6 +49,12 @@ describe('TOTP Library', () => {
             expect(() => base32.decode('AB$')).toThrow('Invalid base32 character');
         });
 
+        it('should reject invalid lengths and non-canonical encodings', () => {
+            expect(() => base32.decode('A')).toThrow('Invalid base32 length');
+            expect(() => base32.decode('ABC')).toThrow('Invalid base32 length');
+            expect(() => base32.decode('B2======')).toThrow('Invalid base32 encoding');
+        });
+
         it('should ignore padding during decode', () => {
             const clean = base32.encode(Buffer.from('test'));
             const withPadding = clean + '====';
@@ -74,12 +80,15 @@ describe('TOTP Library', () => {
         it('should use algorithm-appropriate secret length', () => {
             const sha1 = generateURI({ issuer: 'Test', account: 'a', algorithm: 'SHA1' });
             expect(base32.decode(sha1.secret)).toHaveLength(20);
+            expect(sha1.secret).toMatch(/^[A-Z2-7]+$/);
 
             const sha256 = generateURI({ issuer: 'Test', account: 'a', algorithm: 'SHA256' });
             expect(base32.decode(sha256.secret)).toHaveLength(32);
+            expect(sha256.secret).toMatch(/^[A-Z2-7]+$/);
 
             const sha512 = generateURI({ issuer: 'Test', account: 'a', algorithm: 'SHA512' });
             expect(base32.decode(sha512.secret)).toHaveLength(64);
+            expect(sha512.secret).toMatch(/^[A-Z2-7]+$/);
         });
 
         it('should accept custom byteLength', () => {
@@ -98,6 +107,14 @@ describe('TOTP Library', () => {
                 secret: 'jbswy3dpehpk3pxp==', // lowercase + padding
             });
             expect(uri).toContain('secret=JBSWY3DPEHPK3PXP');
+        });
+
+        it('should reject secrets with embedded padding', () => {
+            expect(() => generateURI({
+                issuer: 'Test',
+                account: 'test',
+                secret: 'JB=SWY3DPEHPK3PXP'
+            })).toThrow('Invalid secret');
         });
 
         it('should validate inputs strictly', () => {
@@ -329,6 +346,7 @@ describe('TOTP Library', () => {
             expect(() => verifyToken('123456', 'invalid!')).toThrow('Invalid secret');
             expect(() => verifyToken('123456', 'abc123')).toThrow('Invalid secret');
             expect(() => verifyToken('123456', 'ABCDEFGH1')).toThrow('Invalid secret');
+            expect(() => verifyToken('123456', 'JB=SWY3DPEHPK3PXP')).toThrow('Invalid secret');
 
             // Valid secret should not throw (but token will be invalid)
             expect(() => verifyToken('123456', 'JBSWY3DPEHPK3PXP')).not.toThrow();
@@ -361,18 +379,20 @@ describe('TOTP Library', () => {
     describe('Validation Methods', () => {
         it('should validate secret format correctly', () => {
             const validSecrets = [
-                'A',
-                'Z',
-                '2',
-                '7',
                 'JBSWY3DPEHPK3PXP',
                 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567',
-                'MFRGGZDFMZTWQ2LJ'
+                'MFRGGZDFMZTWQ2LJ',
+                'MY'
             ];
 
             const invalidSecrets = [
                 '',
                 ' ',
+                'A',
+                'Z',
+                '2',
+                '7',
+                'ABC',
                 'a', // lowercase
                 '1', // invalid digit
                 '8', // invalid digit
@@ -393,6 +413,12 @@ describe('TOTP Library', () => {
             for (const secret of invalidSecrets) {
                 expect(() => totp.validate.secret(secret)).toThrow('Invalid secret');
             }
+        });
+    });
+
+    describe('Exports', () => {
+        it('should expose base32 on the default export', () => {
+            expect(totp.base32).toBe(base32);
         });
     });
 });

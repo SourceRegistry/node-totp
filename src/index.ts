@@ -29,10 +29,20 @@ export const base32 = {
     },
 
     decode(base32Str: string): Buffer {
-        const clean = base32Str.replace(/=/g, '').toUpperCase();
+        const normalized = base32Str.trim().toUpperCase();
+        if (normalized.length === 0) return Buffer.alloc(0);
+        if (!/^[A-Z2-7]+=*$/.test(normalized)) {
+            throw new Error('Invalid base32 character');
+        }
+
+        const clean = normalized.replace(/=+$/, '');
         if (clean.length === 0) return Buffer.alloc(0);
 
-        // Validate
+        const remainder = clean.length % 8;
+        if (![0, 2, 4, 5, 7].includes(remainder)) {
+            throw new Error('Invalid base32 length');
+        }
+
         for (const char of clean) {
             if (this.charset.indexOf(char) === -1) {
                 throw new Error('Invalid base32 character');
@@ -51,20 +61,27 @@ export const base32 = {
         for (let i = 0; i < byteLength; i++) {
             bytes[i] = parseInt(bitString.slice(i * 8, (i + 1) * 8), 2);
         }
-        return Buffer.from(bytes);
+        const decoded = Buffer.from(bytes);
+        const canonical = this.encode(decoded).replace(/=+$/, '');
+        if (canonical !== clean) {
+            throw new Error('Invalid base32 encoding');
+        }
+
+        return decoded;
     },
 };
 
 const totp = {
+    base32,
     helpers: {
         normalizeSecret(secret: string): string {
-            return secret.trim().toUpperCase().replace(/=/g, '');
+            return secret.trim().toUpperCase().replace(/=+$/, '');
         },
         generateSecret(byteLength: number): string {
             if (!Number.isInteger(byteLength) || byteLength <= 0) {
                 throw new Error('Secret byte length must be a positive integer');
             }
-            return base32.encode(randomBytes(byteLength));
+            return this.normalizeSecret(base32.encode(randomBytes(byteLength)));
         },
     },
 
@@ -96,6 +113,15 @@ const totp = {
         },
         secret(secret: string): void {
             if (!secret || !/^[A-Z2-7]+$/.test(secret)) {
+                throw new Error('Invalid secret. Must be valid base32 string (A-Z2-7).');
+            }
+
+            try {
+                const canonical = base32.encode(base32.decode(secret)).replace(/=+$/, '');
+                if (canonical !== secret) {
+                    throw new Error('Invalid secret. Must be valid base32 string (A-Z2-7).');
+                }
+            } catch {
                 throw new Error('Invalid secret. Must be valid base32 string (A-Z2-7).');
             }
         },

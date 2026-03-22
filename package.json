@@ -1,15 +1,15 @@
 {
   "name": "@sourceregistry/node-totp",
   "version": "1.0.5",
-  "description": "A library used to validate generateURI and generate Timed One-Time Password",
-  "main": "./dist/index.es.js",
-  "module": "./dist/index.es.js",
+  "description": "Node.js TOTP library for generating otpauth URIs and verifying time-based one-time passwords",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.es.js",
-      "require": "./dist/index.cjs.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
@@ -48,6 +48,9 @@
   "homepage": "https://sourceregistry.github.io/node-totp",
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

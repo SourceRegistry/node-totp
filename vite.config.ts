@@ -8,10 +8,13 @@ export default defineConfig({
         lib: {
             entry: 'src/index.ts',
             formats: ['es', 'cjs'],
-            fileName: (format) => `index.${format}.js`
+            fileName: (format) => format === 'es' ? 'index.js' : 'index.cjs'
         },
         rollupOptions: {
             external: ["crypto"],
+            output: {
+                exports: 'named',
+            },
         },
         sourcemap: true,
         target: 'node22'

@@ -5,14 +5,14 @@
 [![Build Status](https://github.com/SourceRegistry/node-totp/actions/workflows/test.yml/badge.svg)](https://github.com/SourceRegistry/node-totp/actions)
 [![Coverage](https://img.shields.io/codecov/c/github/SourceRegistry/node-totp)](https://codecov.io/gh/SourceRegistry/node-totp)
 
-A **zero-dependency**, **RFC-compliant** TOTP (Time-based One-Time Password) library for Node.js. Perfect for implementing 2FA authentication with Google Authenticator, Authy, and other TOTP-compatible apps.
+A zero-dependency, RFC-compliant TOTP (Time-based One-Time Password) library for Node.js. It is intended for server-side 2FA flows with Google Authenticator, Authy, and other TOTP-compatible apps.
 
-- ✅ **RFC 6238 & RFC 4226 compliant**
-- ✅ **Zero external dependencies** (only uses Node.js built-ins)
-- ✅ **Timing attack resistant** with constant-time comparison
-- ✅ **TypeScript ready** with full type definitions
-- ✅ **Comprehensive test coverage** including official RFC test vectors
-- ✅ **Secure by default** with input validation and safe defaults
+- RFC 6238 and RFC 4226 compliant
+- Zero external dependencies
+- Timing attack resistant token comparison
+- TypeScript definitions included
+- Tested against RFC vectors
+- Strict input validation and safe defaults
 
 ## Installation
 
@@ -45,7 +45,7 @@ const isValid = verifyToken(userInput, secret, {
   algorithm: 'SHA256',
   digits: 6,
   period: 30,
-  window: 1 // Accept tokens from ±30 seconds
+  window: 1 // Accept tokens from +/-30 seconds
 });
 
 console.log('Token valid:', isValid);
@@ -67,9 +67,9 @@ const { secret } = totp.generateURI({
 // Verify with custom time (useful for testing)
 const testTime = Math.floor(Date.now() / 1000);
 const testToken = totp.generateToken(
-  totp.base32.decode(secret), 
-  Math.floor(testTime / 30), 
-  6, 
+  totp.base32.decode(secret),
+  Math.floor(testTime / 30),
+  6,
   'SHA512'
 );
 
@@ -86,85 +86,62 @@ const isValid = totp.verifyToken(testToken, secret, {
 
 ### `generateURI(options)`
 
-Generates an `otpauth://` URI and secret for TOTP setup.
+Generates an `otpauth://` URI and a secret for TOTP setup.
 
-**Options:**
-- `issuer` (string, required) - Service name (e.g., "MyApp")
-- `account` (string, required) - User identifier (e.g., email)
-- `secret` (string, optional) - Base32-encoded secret. If omitted, auto-generated
-- `algorithm` (string, optional) - `'SHA1'` | `'SHA256'` | `'SHA512'` (default: `'SHA1'`)
-- `digits` (number, optional) - `6` | `7` | `8` (default: `6`)
-- `period` (number, optional) - Time step in seconds (default: `30`)
-- `byteLength` (number, optional) - Secret length in bytes (default: algorithm-appropriate)
+- `issuer` (string, required): Service name such as `MyApp`
+- `account` (string, required): User identifier such as an email address
+- `secret` (string, optional): Canonical unpadded Base32 secret
+- `algorithm` (string, optional): `SHA1`, `SHA256`, or `SHA512` (default `SHA1`)
+- `digits` (number, optional): `6`, `7`, or `8` (default `6`)
+- `period` (number, optional): Time step in seconds (default `30`)
+- `byteLength` (number, optional): Secret length in bytes
 
-**Returns:** `{ uri: string, secret: string }`
+Returns `{ uri: string, secret: string }`.
 
 ### `verifyToken(token, secret, options?)`
 
 Verifies a TOTP token against a secret.
 
-**Parameters:**
-- `token` (string) - User-provided token (6-8 digits)
-- `secret` (string) - Base32-encoded secret
-- `options` (object, optional):
-    - `window` (number) - Time window in steps (default: `1` = ±30 seconds)
-    - `period` (number) - Time step in seconds (default: `30`)
-    - `algorithm` (string) - Hash algorithm (default: `'SHA1'`)
-    - `digits` (number) - Expected token length (default: `6`)
-    - `now` (number) - Unix timestamp in seconds (for testing)
+- `token` (string): User-provided token with 6 to 8 digits
+- `secret` (string): Canonical unpadded Base32 secret
+- `options.window` (number): Time window in steps (default `1`, meaning +/-30 seconds with the default period)
+- `options.period` (number): Time step in seconds (default `30`)
+- `options.algorithm` (string): Hash algorithm (default `SHA1`)
+- `options.digits` (number): Expected token length (default `6`)
+- `options.now` (number): Unix timestamp in seconds, useful for testing
 
-**Returns:** `boolean`
+Returns `boolean`.
 
 ### `generateToken(secret, counter, digits, algorithm)`
 
-Generates a TOTP token (primarily for internal/testing use).
+Generates a TOTP token.
 
-**Parameters:**
-- `secret` (Buffer) - Decoded secret buffer
-- `counter` (number) - Time step counter
-- `digits` (number) - Token length (6, 7, or 8)
-- `algorithm` (string) - Hash algorithm
+- `secret` (Buffer): Decoded secret buffer
+- `counter` (number): Time step counter
+- `digits` (number): Token length
+- `algorithm` (string): Hash algorithm
 
-**Returns:** `string` (padded token)
+Returns a zero-padded string token.
 
 ### `base32`
 
-RFC 4648 Base32 implementation:
+RFC 4648 Base32 helpers:
 
 - `base32.encode(buffer: Buffer): string`
 - `base32.decode(base32Str: string): Buffer`
 
-## Security Features
+The library accepts canonical unpadded Base32 secrets. Padded or non-canonical forms are normalized or rejected before use.
 
-### 🔒 Timing Attack Protection
-Uses Node.js `crypto.timingSafeEqual()` for constant-time token comparison to prevent timing side-channel attacks.
+## Security Notes
 
-### 🛡️ Input Validation
-All inputs are strictly validated:
-- Secret must be valid Base32 (A-Z2-7)
-- Algorithm restricted to SHA1/SHA256/SHA512
-- Digits limited to 6, 7, or 8
-- Period must be positive integer
-- Account/issuer names validated against safe character sets
-
-### 🔐 Secure Defaults
-- Auto-generated secrets use algorithm-appropriate lengths:
-    - SHA1: 20 bytes (160 bits)
-    - SHA256: 32 bytes (256 bits)
-    - SHA512: 64 bytes (512 bits)
-- Time window defaults to ±30 seconds (1 step)
+- Token comparison uses `crypto.timingSafeEqual()`
+- Supported algorithms are limited to `SHA1`, `SHA256`, and `SHA512`
+- Digits are limited to `6`, `7`, or `8`
+- Period must be a positive integer
+- Generated secrets use algorithm-appropriate byte lengths
 
 ## Testing
 
-The library includes comprehensive tests:
-
-- ✅ All RFC 6238 test vectors
-- ✅ Base32 encode/decode roundtrip validation
-- ✅ Algorithm and digit length combinations
-- ✅ Time window boundary testing
-- ✅ Security validation (timing safety, input validation)
-
-Run tests with:
 ```bash
 npm test
 npm run test:coverage
