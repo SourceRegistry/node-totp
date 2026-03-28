@@ -1,6 +1,6 @@
 {
   "name": "@sourceregistry/node-totp",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Node.js TOTP library for generating otpauth URIs and verifying time-based one-time passwords",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

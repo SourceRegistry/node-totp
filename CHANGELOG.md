@@ -1,3 +1,10 @@
+## [1.0.6](https://github.com/SourceRegistry/node-totp/compare/v1.0.5...v1.0.6) (2026-03-28)
+
+
+### Bug Fixes
+
+* harden base32 handling and package exports ([a6d7007](https://github.com/SourceRegistry/node-totp/commit/a6d70079e816ac4282c9e2ab264505e1281826ec))
+
 ## [1.0.5](https://github.com/SourceRegistry/node-totp/compare/v1.0.4...v1.0.5) (2025-10-29)
 
 
