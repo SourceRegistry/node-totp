@@ -1,3 +1,11 @@
+## [1.0.7](https://github.com/SourceRegistry/node-totp/compare/v1.0.6...v1.0.7) (2026-03-30)
+
+
+### Bug Fixes
+
+* add explicit public api types ([ecf6915](https://github.com/SourceRegistry/node-totp/commit/ecf6915ff44cf973713b1e76fc4bcccfc49d7275))
+* add release to jsr ([a9a832b](https://github.com/SourceRegistry/node-totp/commit/a9a832b62db206a0b0b6f547b4c3ab476d91e9b2))
+
 ## [1.0.6](https://github.com/SourceRegistry/node-totp/compare/v1.0.5...v1.0.6) (2026-03-28)
 
 
