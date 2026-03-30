@@ -1,6 +1,7 @@
 # @sourceregistry/node-totp
 
 [![npm version](https://img.shields.io/npm/v/@sourceregistry/node-totp)](https://www.npmjs.com/package/@sourceregistry/node-totp)
+[![JSR](https://jsr.io/badges/@sourceregistry/node-totp)](https://jsr.io/@sourceregistry/node-totp)
 [![License](https://img.shields.io/npm/l/@sourceregistry/node-totp)](https://github.com/SourceRegistry/node-totp/blob/main/LICENSE)
 [![Build Status](https://github.com/SourceRegistry/node-totp/actions/workflows/test.yml/badge.svg)](https://github.com/SourceRegistry/node-totp/actions)
 [![Coverage](https://img.shields.io/codecov/c/github/SourceRegistry/node-totp)](https://codecov.io/gh/SourceRegistry/node-totp)

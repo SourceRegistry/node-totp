@@ -66,33 +66,29 @@
     "@semantic-release/release-notes-generator": "^14.0.3",
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/npm": "^12.0.2",
-    "@semantic-release/git": "^10.0.1"
+    "@semantic-release/git": "^10.0.1",
+    "@sourceregistry/semantic-release-jsr": "^1.0.1"
   },
   "release": {
     "branches": [
       "main"
     ],
     "plugins": [
-      [
-        "@semantic-release/commit-analyzer"
-      ],
-      [
-        "@semantic-release/release-notes-generator"
-      ],
-      [
-        "@semantic-release/changelog"
-      ],
-      [
-        "@semantic-release/npm"
-      ],
+      "@semantic-release/commit-analyzer",
+      "@semantic-release/release-notes-generator",
+      "@semantic-release/changelog",
+      "@semantic-release/npm",
+      "@sourceregistry/semantic-release-jsr",
       [
         "@semantic-release/git",
         {
           "assets": [
             "package.json",
+            "package-lock.json",
+            "jsr.json",
             "CHANGELOG.md"
           ],
-          "message": "node-totp(release): 🚀 ${nextRelease.version} \n\n${nextRelease.notes}"
+          "message": "node-totp(release): v${nextRelease.version}\n\n${nextRelease.notes}"
         }
       ]
     ]
