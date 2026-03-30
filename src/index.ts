@@ -1,9 +1,199 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 
 /**
+ * Supported HMAC algorithms for TOTP generation and verification.
+ */
+export type TotpAlgorithm = 'SHA1' | 'SHA256' | 'SHA512';
+
+/**
+ * Supported token lengths for generated TOTP codes.
+ */
+export type TotpDigits = 6 | 7 | 8;
+
+/**
+ * RFC 4648 Base32 helpers exposed by the public API.
+ */
+export interface Base32Api {
+    /**
+     * The canonical RFC 4648 Base32 alphabet.
+     */
+    readonly charset: string;
+
+    /**
+     * Encodes a buffer as padded RFC 4648 Base32.
+     *
+     * @param buffer Bytes to encode.
+     * @returns The padded Base32 string.
+     */
+    encode(buffer: Buffer): string;
+
+    /**
+     * Decodes a canonical RFC 4648 Base32 string.
+     *
+     * @param base32Str Base32 input to decode.
+     * @returns The decoded bytes.
+     * @throws If the string contains invalid characters or non-canonical encoding.
+     */
+    decode(base32Str: string): Buffer;
+}
+
+/**
+ * Options for generating an otpauth URI and secret.
+ */
+export interface GenerateUriOptions {
+    /**
+     * Service or application name displayed by authenticator apps.
+     */
+    issuer: string;
+
+    /**
+     * User identifier, typically an email address or username.
+     */
+    account: string;
+
+    /**
+     * Canonical unpadded Base32 secret to embed in the URI.
+     * If omitted, a new secret is generated.
+     */
+    secret?: string;
+
+    /**
+     * Hash algorithm used by the authenticator.
+     *
+     * @defaultValue `'SHA1'`
+     */
+    algorithm?: TotpAlgorithm;
+
+    /**
+     * Number of digits in generated tokens.
+     *
+     * @defaultValue `6`
+     */
+    digits?: TotpDigits;
+
+    /**
+     * Time step in seconds.
+     *
+     * @defaultValue `30`
+     */
+    period?: number;
+
+    /**
+     * Secret length in bytes when generating a new secret.
+     * Defaults to an algorithm-appropriate size.
+     */
+    byteLength?: number;
+}
+
+/**
+ * Result returned when generating an otpauth URI.
+ */
+export interface GenerateUriResult {
+    /**
+     * Fully encoded otpauth URI suitable for authenticator setup.
+     */
+    uri: string;
+
+    /**
+     * Canonical unpadded Base32 secret associated with the URI.
+     */
+    secret: string;
+}
+
+/**
+ * Options that control TOTP token verification.
+ */
+export interface VerifyTokenOptions {
+    /**
+     * Number of time steps to check before and after the current step.
+     */
+    window: number;
+
+    /**
+     * Time step in seconds.
+     */
+    period: number;
+
+    /**
+     * Hash algorithm expected for the token.
+     */
+    algorithm: TotpAlgorithm;
+
+    /**
+     * Expected token length.
+     */
+    digits: TotpDigits;
+
+    /**
+     * Unix time in seconds to use instead of `Date.now()`.
+     */
+    now: number;
+}
+
+interface TotpHelpers {
+    normalizeSecret(secret: string): string;
+    generateSecret(byteLength: number): string;
+}
+
+interface TotpValidation {
+    issuer(issuer: string): void;
+    account(account: string): void;
+    algorithm(algo: string): void;
+    digits(digits: number): void;
+    period(period: number): void;
+    secret(secret: string): void;
+}
+
+export interface TotpApi {
+    /**
+     * RFC 4648 Base32 helpers.
+     */
+    base32: Base32Api;
+
+    /**
+     * Internal helper utilities exposed on the default export.
+     */
+    helpers: TotpHelpers;
+
+    /**
+     * Input validation helpers exposed on the default export.
+     */
+    validate: TotpValidation;
+
+    /**
+     * Generates an otpauth URI and associated secret.
+     *
+     * @param options TOTP configuration values.
+     * @returns The generated otpauth URI and secret.
+     */
+    generateURI(options: GenerateUriOptions): GenerateUriResult;
+
+    /**
+     * Verifies a token against a shared secret.
+     *
+     * @param token User-provided token.
+     * @param secret Canonical unpadded Base32 secret.
+     * @param options Verification overrides.
+     * @returns `true` when the token is valid for the given window.
+     */
+    verifyToken(token: string, secret: string, options?: Partial<VerifyTokenOptions>): boolean;
+
+    /**
+     * Generates a token for a specific counter value.
+     *
+     * @param secret Decoded secret bytes.
+     * @param counter Time-step counter.
+     * @param digits Number of digits to return.
+     * @param algorithm HMAC algorithm.
+     * @returns A zero-padded TOTP token.
+     */
+    generateToken(secret: Buffer, counter: number, digits: TotpDigits, algorithm: TotpAlgorithm): string;
+}
+
+/**
  * RFC 4648 Base32 implementation
  */
-export const base32 = {
+export const base32: Base32Api = {
     get charset(): string {
         return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
     },
@@ -71,7 +261,7 @@ export const base32 = {
     },
 };
 
-const totp = {
+const totp: TotpApi = {
     base32,
     helpers: {
         normalizeSecret(secret: string): string {
@@ -127,15 +317,7 @@ const totp = {
         },
     },
 
-    generateURI(options: {
-        issuer: string;
-        account: string;
-        secret?: string;
-        algorithm?: 'SHA1' | 'SHA256' | 'SHA512';
-        digits?: 6 | 7 | 8;
-        period?: number;
-        byteLength?: number;
-    }) {
+    generateURI(options: GenerateUriOptions): GenerateUriResult {
         const {
             issuer,
             account,
@@ -180,8 +362,8 @@ const totp = {
         options: Partial<{
             window: number;
             period: number;
-            algorithm: 'SHA1' | 'SHA256' | 'SHA512';
-            digits: 6 | 7 | 8;
+            algorithm: TotpAlgorithm;
+            digits: TotpDigits;
             now: number;
         }> = {}
     ): boolean {
@@ -227,8 +409,8 @@ const totp = {
     generateToken(
         secret: Buffer,
         counter: number,
-        digits: number,
-        algorithm: 'SHA1' | 'SHA256' | 'SHA512'
+        digits: TotpDigits,
+        algorithm: TotpAlgorithm
     ): string {
         if (!Number.isSafeInteger(counter) || counter < 0) {
             throw new Error('Counter must be a non-negative safe integer');
@@ -259,14 +441,14 @@ export default totp;
 /**
  * Generates an otpauth URL that when opened launches any capable password manager that supports TOTP.
  */
-export const generateURI = totp.generateURI.bind(totp);
+export const generateURI: TotpApi['generateURI'] = totp.generateURI.bind(totp);
 
 /**
  * Verifies a token based on the configuration provided.
  */
-export const verifyToken = totp.verifyToken.bind(totp);
+export const verifyToken: TotpApi['verifyToken'] = totp.verifyToken.bind(totp);
 
 /**
  * Generates a token just like a password manager.
  */
-export const generateToken = totp.generateToken.bind(totp);
+export const generateToken: TotpApi['generateToken'] = totp.generateToken.bind(totp);
