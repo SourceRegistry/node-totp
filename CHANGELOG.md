@@ -1,3 +1,10 @@
+## [1.0.8](https://github.com/SourceRegistry/node-totp/compare/v1.0.7...v1.0.8) (2026-04-04)
+
+
+### Bug Fixes
+
+* packaging issue with pipeline ([8375b86](https://github.com/SourceRegistry/node-totp/commit/8375b8636dff5f020b7d0d60260eaa54ee396970))
+
 ## [1.0.7](https://github.com/SourceRegistry/node-totp/compare/v1.0.6...v1.0.7) (2026-03-30)
 
 
