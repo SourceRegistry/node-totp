@@ -58,6 +58,8 @@ jobs:
         run: npm install
       - name: Restore tracked files
         run: git restore .
+      - name: Build the package
+        run: npm run build
       - name: Run semantic-release
         run: npx semantic-release
 
