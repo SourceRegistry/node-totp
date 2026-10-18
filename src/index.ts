@@ -9,6 +9,13 @@ export type TotpAlgorithm = 'SHA1' | 'SHA256' | 'SHA512';
  * Supported token lengths for generated TOTP codes.
  */
 export type TotpDigits = 6 | 7 | 8;
+export type UriDigits = 6 | 8;
+
+/** Atomically claim a matched time-step counter for one enrolled account. */
+export type ClaimTotpCounter = (counter: number) => boolean | Promise<boolean>;
+
+const MIN_SECRET_BYTES = 16;
+const MAX_WINDOW = 2;
 
 /**
  * RFC 4648 Base32 helpers exposed by the public API.
@@ -52,7 +59,7 @@ export interface GenerateUriOptions {
     account: string;
 
     /**
-     * Canonical unpadded Base32 secret to embed in the URI.
+     * Canonical unpadded Base32 secret of at least 16 bytes to embed in the URI.
      * If omitted, a new secret is generated.
      */
     secret?: string;
@@ -65,11 +72,11 @@ export interface GenerateUriOptions {
     algorithm?: TotpAlgorithm;
 
     /**
-     * Number of digits in generated tokens.
+     * Number of digits in the setup URI (6 or 8).
      *
      * @defaultValue `6`
      */
-    digits?: TotpDigits;
+    digits?: UriDigits;
 
     /**
      * Time step in seconds.
@@ -79,7 +86,7 @@ export interface GenerateUriOptions {
     period?: number;
 
     /**
-     * Secret length in bytes when generating a new secret.
+     * Secret length in bytes when generating a new secret (minimum 16).
      * Defaults to an algorithm-appropriate size.
      */
     byteLength?: number;
@@ -105,7 +112,7 @@ export interface GenerateUriResult {
  */
 export interface VerifyTokenOptions {
     /**
-     * Number of time steps to check before and after the current step.
+     * Number of time steps to check before and after the current step (0 to 2).
      */
     window: number;
 
@@ -169,7 +176,7 @@ export interface TotpApi {
     generateURI(options: GenerateUriOptions): GenerateUriResult;
 
     /**
-     * Verifies a token against a shared secret.
+     * Checks a token against a shared secret without replay protection.
      *
      * @param token User-provided token.
      * @param secret Canonical unpadded Base32 secret.
@@ -177,6 +184,13 @@ export interface TotpApi {
      * @returns `true` when the token is valid for the given window.
      */
     verifyToken(token: string, secret: string, options?: Partial<VerifyTokenOptions>): boolean;
+
+    /**
+     * Verifies a token and atomically claims its matched counter.
+     * The claim callback must persist the greatest accepted counter per account
+     * and return true only when it advances that counter.
+     */
+    verifyTokenOnce(token: string, secret: string, claimCounter: ClaimTotpCounter, options?: Partial<VerifyTokenOptions>): Promise<boolean>;
 
     /**
      * Generates a token for a specific counter value.
@@ -261,6 +275,47 @@ export const base32: Base32Api = {
     },
 };
 
+function findMatchingCounter(api: TotpApi, token: string, inputSecret: string, options: Partial<VerifyTokenOptions>, minimumSecretBytes: number): number | null {
+    const {
+        window = 1,
+        period = 30,
+        algorithm = 'SHA1',
+        digits = 6,
+        now: nowOpt
+    } = options;
+
+    if (!/^\d{6,8}$/.test(token) || token.length !== digits) return null;
+
+    const secret = api.helpers.normalizeSecret(inputSecret);
+    api.validate.secret(secret);
+    api.validate.algorithm(algorithm);
+    api.validate.digits(digits);
+    api.validate.period(period);
+    if (!Number.isInteger(window) || window < 0 || window > MAX_WINDOW) {
+        throw new Error(`Window must be an integer from 0 to ${MAX_WINDOW}`);
+    }
+
+    const secretBuf = base32.decode(secret);
+    if (secretBuf.length < minimumSecretBytes) {
+        throw new Error(`Secret must contain at least ${minimumSecretBytes} bytes`);
+    }
+    const nowSec = nowOpt ?? Math.floor(Date.now() / 1000);
+    const currentStep = Math.floor(nowSec / period);
+    const tokBuf = Buffer.from(token);
+
+    for (let i = -window; i <= window; i++) {
+        const step = currentStep + i;
+        if (step < 0) continue;
+
+        const generated = api.generateToken(secretBuf, step, digits, algorithm);
+        const genBuf = Buffer.from(generated);
+        if (genBuf.length === tokBuf.length && timingSafeEqual(genBuf, tokBuf)) {
+            return step;
+        }
+    }
+    return null;
+}
+
 const totp: TotpApi = {
     base32,
     helpers: {
@@ -268,8 +323,8 @@ const totp: TotpApi = {
             return secret.trim().toUpperCase().replace(/=+$/, '');
         },
         generateSecret(byteLength: number): string {
-            if (!Number.isInteger(byteLength) || byteLength <= 0) {
-                throw new Error('Secret byte length must be a positive integer');
+            if (!Number.isInteger(byteLength) || byteLength < MIN_SECRET_BYTES) {
+                throw new Error(`Secret byte length must be an integer of at least ${MIN_SECRET_BYTES}`);
             }
             return this.normalizeSecret(base32.encode(randomBytes(byteLength)));
         },
@@ -277,13 +332,13 @@ const totp: TotpApi = {
 
     validate: {
         issuer(issuer: string): void {
-            if (!issuer || !/^[\w .-]+$/.test(issuer)) {
-                throw new Error('Invalid issuer. Must contain only letters, numbers, spaces, dots, hyphens, and underscores.');
+            if (typeof issuer !== 'string' || !issuer.trim() || /[:\u0000-\u001f\u007f]/.test(issuer)) {
+                throw new Error('Invalid issuer. Must be non-empty and contain no colon or control characters.');
             }
         },
         account(account: string): void {
-            if (!account || !/^[\w@.+-]+$/.test(account)) {
-                throw new Error('Invalid account. Must contain only letters, numbers, and @ . + - _ characters.');
+            if (typeof account !== 'string' || !account.trim() || /[:\u0000-\u001f\u007f]/.test(account)) {
+                throw new Error('Invalid account. Must be non-empty and contain no colon or control characters.');
             }
         },
         algorithm(algo: string): void {
@@ -325,21 +380,29 @@ const totp: TotpApi = {
             algorithm = 'SHA1',
             digits = 6,
             period = 30,
-            byteLength = algorithm === 'SHA1' ? 20 : algorithm === 'SHA256' ? 32 : 64,
+            byteLength,
         } = options;
 
         this.validate.issuer(issuer);
         this.validate.account(account);
         this.validate.algorithm(algorithm);
         this.validate.digits(digits);
+        if (digits !== 6 && digits !== 8) {
+            throw new Error('URI digits must be 6 or 8');
+        }
         this.validate.period(period);
+        const normalizedAlgorithm = algorithm.toUpperCase() as TotpAlgorithm;
 
         let secret: string;
         if (inputSecret !== undefined) {
             secret = this.helpers.normalizeSecret(inputSecret);
             this.validate.secret(secret);
+            if (base32.decode(secret).length < MIN_SECRET_BYTES) {
+                throw new Error(`Secret must contain at least ${MIN_SECRET_BYTES} bytes`);
+            }
         } else {
-            secret = this.helpers.generateSecret(byteLength);
+            const secretLength = byteLength ?? (normalizedAlgorithm === 'SHA1' ? 20 : normalizedAlgorithm === 'SHA256' ? 32 : 64);
+            secret = this.helpers.generateSecret(secretLength);
         }
 
         const encodedIssuer = encodeURIComponent(issuer);
@@ -349,61 +412,23 @@ const totp: TotpApi = {
         const uri = `otpauth://totp/${encodedIssuer}:${encodedAccount}?` +
             `issuer=${encodedIssuer}` +
             `&secret=${encodedSecret}` +
-            `&algorithm=${algorithm.toUpperCase()}` +
+            `&algorithm=${normalizedAlgorithm}` +
             `&digits=${digits}` +
             `&period=${period}`;
 
         return { uri, secret };
     },
 
-    verifyToken(
-        token: string,
-        secret: string,
-        options: Partial<{
-            window: number;
-            period: number;
-            algorithm: TotpAlgorithm;
-            digits: TotpDigits;
-            now: number;
-        }> = {}
-    ): boolean {
-        const {
-            window = 1,
-            period = 30,
-            algorithm = 'SHA1',
-            digits = 6,
-            now: nowOpt
-        } = options;
+    verifyToken(token: string, secret: string, options: Partial<VerifyTokenOptions> = {}): boolean {
+        return findMatchingCounter(this, token, secret, options, 0) !== null;
+    },
 
-        if (!/^\d{6,8}$/.test(token)) return false;
-        if (token.length !== digits) return false;
-
-        secret = this.helpers.normalizeSecret(secret);
-        this.validate.secret(secret);
-        this.validate.algorithm(algorithm);
-        this.validate.digits(digits);
-        this.validate.period(period);
-        if (!Number.isInteger(window) || window < 0) {
-            throw new Error('Window must be a non-negative integer');
+    async verifyTokenOnce(token: string, secret: string, claimCounter: ClaimTotpCounter, options: Partial<VerifyTokenOptions> = {}): Promise<boolean> {
+        if (typeof claimCounter !== 'function') {
+            throw new Error('A counter claim callback is required');
         }
-
-        const secretBuf = base32.decode(secret);
-        const nowSec = nowOpt ?? Math.floor(Date.now() / 1000);
-        const currentStep = Math.floor(nowSec / period);
-
-        for (let i = -window; i <= window; i++) {
-            const step = currentStep + i;
-            if (step < 0) continue;
-
-            const generated = this.generateToken(secretBuf, step, digits, algorithm);
-
-            const genBuf = Buffer.from(generated);
-            const tokBuf = Buffer.from(token);
-            if (genBuf.length === tokBuf.length && timingSafeEqual(genBuf, tokBuf)) {
-                return true;
-            }
-        }
-        return false;
+        const counter = findMatchingCounter(this, token, secret, options, MIN_SECRET_BYTES);
+        return counter !== null && await claimCounter(counter) === true;
     },
 
     generateToken(
@@ -415,6 +440,8 @@ const totp: TotpApi = {
         if (!Number.isSafeInteger(counter) || counter < 0) {
             throw new Error('Counter must be a non-negative safe integer');
         }
+        totp.validate.digits(digits);
+        totp.validate.algorithm(algorithm);
 
         const counterBuf = Buffer.alloc(8);
         counterBuf.writeBigUInt64BE(BigInt(counter));
@@ -447,6 +474,9 @@ export const generateURI: TotpApi['generateURI'] = totp.generateURI.bind(totp);
  * Verifies a token based on the configuration provided.
  */
 export const verifyToken: TotpApi['verifyToken'] = totp.verifyToken.bind(totp);
+
+/** Verifies a token once using an application-provided atomic counter claim. */
+export const verifyTokenOnce: TotpApi['verifyTokenOnce'] = totp.verifyTokenOnce.bind(totp);
 
 /**
  * Generates a token just like a password manager.

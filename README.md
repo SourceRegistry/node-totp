@@ -6,9 +6,9 @@
 [![Build Status](https://github.com/SourceRegistry/node-totp/actions/workflows/test.yml/badge.svg)](https://github.com/SourceRegistry/node-totp/actions)
 [![Coverage](https://img.shields.io/codecov/c/github/SourceRegistry/node-totp)](https://codecov.io/gh/SourceRegistry/node-totp)
 
-A zero-dependency, RFC-compliant TOTP (Time-based One-Time Password) library for Node.js. It is intended for server-side 2FA flows with Google Authenticator, Authy, and other TOTP-compatible apps.
+A zero-dependency TOTP (Time-based One-Time Password) library for Node.js. It implements the RFC 4226/6238 code calculation and generates `otpauth://` setup URIs. Full verifier compliance requires application-managed replay protection, attempt throttling, and secure per-account secret storage.
 
-- RFC 6238 and RFC 4226 compliant
+- RFC 4226/6238 code calculation, with an API for replay-safe verification
 - Zero external dependencies
 - Timing attack resistant token comparison
 - TypeScript definitions included
@@ -32,7 +32,6 @@ import { generateURI, verifyToken } from '@sourceregistry/node-totp';
 const { uri, secret } = generateURI({
   issuer: 'MyApp',
   account: 'user@example.com',
-  algorithm: 'SHA256',
   digits: 6,
   period: 30
 });
@@ -40,10 +39,9 @@ const { uri, secret } = generateURI({
 console.log('Scan this URI in your authenticator app:', uri);
 // otpauth://totp/MyApp:user%40example.com?issuer=MyApp&secret=...
 
-// Later, verify user input
+// Later, check user input (stateless; see verifyTokenOnce for login flows)
 const userInput = '123456';
 const isValid = verifyToken(userInput, secret, {
-  algorithm: 'SHA256',
   digits: 6,
   period: 30,
   window: 1 // Accept tokens from +/-30 seconds
@@ -89,23 +87,23 @@ const isValid = totp.verifyToken(testToken, secret, {
 
 Generates an `otpauth://` URI and a secret for TOTP setup.
 
-- `issuer` (string, required): Service name such as `MyApp`
-- `account` (string, required): User identifier such as an email address
-- `secret` (string, optional): Canonical unpadded Base32 secret
-- `algorithm` (string, optional): `SHA1`, `SHA256`, or `SHA512` (default `SHA1`)
-- `digits` (number, optional): `6`, `7`, or `8` (default `6`)
+- `issuer` (string, required): Service name such as `MyApp`; cannot contain a colon or control characters
+- `account` (string, required): User identifier such as an email address or `Alice Smith`; cannot contain a colon or control characters
+- `secret` (string, optional): Canonical unpadded Base32 secret containing at least 16 decoded bytes
+- `algorithm` (string, optional): `SHA1`, `SHA256`, or `SHA512` (default `SHA1`); casing is normalized at runtime
+- `digits` (number, optional): `6` or `8` for `otpauth://` compatibility (default `6`)
 - `period` (number, optional): Time step in seconds (default `30`)
-- `byteLength` (number, optional): Secret length in bytes
+- `byteLength` (number, optional): Generated secret length in bytes (minimum `16`; defaults to `20`, `32`, or `64` for SHA1, SHA256, or SHA512)
 
 Returns `{ uri: string, secret: string }`.
 
 ### `verifyToken(token, secret, options?)`
 
-Verifies a TOTP token against a secret.
+Checks a TOTP token against a secret without tracking prior successful uses. Use `verifyTokenOnce` for authentication.
 
 - `token` (string): User-provided token with 6 to 8 digits
 - `secret` (string): Canonical unpadded Base32 secret
-- `options.window` (number): Time window in steps (default `1`, meaning +/-30 seconds with the default period)
+- `options.window` (number): Time steps to check on either side of the current step (`0` to `2`; default `1`, meaning +/-30 seconds with the default period)
 - `options.period` (number): Time step in seconds (default `30`)
 - `options.algorithm` (string): Hash algorithm (default `SHA1`)
 - `options.digits` (number): Expected token length (default `6`)
@@ -113,14 +111,30 @@ Verifies a TOTP token against a secret.
 
 Returns `boolean`.
 
+### `verifyTokenOnce(token, secret, claimCounter, options?)`
+
+Checks a token and passes its matched time-step counter to `claimCounter`. Returns `Promise<boolean>` and accepts the token only when the callback returns `true`. It rejects secrets shorter than 16 bytes.
+
+The callback must **atomically** advance a durable, per-account `lastAcceptedCounter` only if the matched counter is greater than the stored value. Return `true` only when the update succeeds. A database conditional update or transaction can provide this guarantee across concurrent requests and server instances. An in-memory set cannot protect a multi-instance deployment or survive a restart.
+
+```ts
+import { verifyTokenOnce } from '@sourceregistry/node-totp';
+
+const accepted = await verifyTokenOnce(token, user.totpSecret, counter =>
+  db.claimTotpCounter(user.id, counter) // App-defined atomic conditional update
+);
+```
+
+`options` has the same shape and defaults as `verifyToken`. Rate-limit attempts per account before calling either verifier.
+
 ### `generateToken(secret, counter, digits, algorithm)`
 
 Generates a TOTP token.
 
 - `secret` (Buffer): Decoded secret buffer
 - `counter` (number): Time step counter
-- `digits` (number): Token length
-- `algorithm` (string): Hash algorithm
+- `digits` (number): Token length (`6`, `7`, or `8`)
+- `algorithm` (string): Hash algorithm (`SHA1`, `SHA256`, or `SHA512`)
 
 Returns a zero-padded string token.
 
@@ -137,9 +151,16 @@ The library accepts canonical unpadded Base32 secrets. Padded or non-canonical f
 
 - Token comparison uses `crypto.timingSafeEqual()`
 - Supported algorithms are limited to `SHA1`, `SHA256`, and `SHA512`
-- Digits are limited to `6`, `7`, or `8`
+- The HOTP/TOTP calculation supports `6`, `7`, or `8` digits; setup URIs support `6` or `8` as specified by the published key URI format
+- Verification windows are limited to `0`, `1`, or `2` steps
 - Period must be a positive integer
-- Generated secrets use algorithm-appropriate byte lengths
+- New secrets must contain at least 16 bytes; generated secrets use algorithm-appropriate byte lengths by default
+- Supplied secrets must also be randomly generated; length alone does not make a predictable secret secure
+- The stateless `verifyToken` still accepts shorter existing secrets for migration; `verifyTokenOnce` requires at least 16 bytes
+- Give every enrolled account a distinct random secret and protect secrets in storage
+- Enforce attempt throttling across login sessions; the library has no account or attempt store
+- Use `verifyTokenOnce` with a durable atomic counter claim to prevent code reuse
+- Authenticator support for non-default algorithms and periods varies; test the chosen settings with the client apps you support
 
 ## Testing
 
@@ -165,37 +186,19 @@ const qrDataUrl = await qrcode.toDataURL(uri);
 // Display qrDataUrl in your HTML template
 ```
 
-### Express.js Integration
+### Atomic replay claim
 
-```ts
-import express from 'express';
-import { generateURI, verifyToken } from '@sourceregistry/node-totp';
+For a SQL-backed application, `db.claimTotpCounter(userId, counter)` can run a conditional update and return `true` only when one row changed:
 
-const app = express();
-
-// Setup route
-app.get('/2fa/setup', (req, res) => {
-  const { uri, secret } = generateURI({
-    issuer: 'MyApp',
-    account: req.user.email
-  });
-  
-  // Store secret securely (encrypted) in user database
-  req.user.totpSecret = secret;
-  
-  res.json({ uri });
-});
-
-// Verify route
-app.post('/2fa/verify', (req, res) => {
-  const { token } = req.body;
-  const isValid = verifyToken(token, req.user.totpSecret, {
-    window: 1
-  });
-  
-  res.json({ valid: isValid });
-});
+```sql
+UPDATE user_totp
+SET last_accepted_counter = :counter
+WHERE user_id = :user_id
+  AND (last_accepted_counter IS NULL OR last_accepted_counter < :counter);
 ```
+
+Keep the secret and `last_accepted_counter` per account. Enforce attempt throttling across sessions before calling `verifyTokenOnce`, and activate a new enrollment only after the user proves possession of the generated secret.
+Reset the stored counter atomically when rotating that account's secret.
 
 ## License
 

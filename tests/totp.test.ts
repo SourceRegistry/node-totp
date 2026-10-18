@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import totp, { generateURI, verifyToken, generateToken, base32 } from '../src';
+import { describe, it, expect, vi } from 'vitest';
+import totp, { generateURI, verifyToken, verifyTokenOnce, generateToken, base32 } from '../src';
 import { randomBytes } from "crypto";
 
 // RFC 6238 Appendix B test vectors (SHA1, 8 digits)
@@ -89,6 +89,10 @@ describe('TOTP Library', () => {
             const sha512 = generateURI({ issuer: 'Test', account: 'a', algorithm: 'SHA512' });
             expect(base32.decode(sha512.secret)).toHaveLength(64);
             expect(sha512.secret).toMatch(/^[A-Z2-7]+$/);
+
+            const lowercaseSha256 = generateURI({ issuer: 'Test', account: 'a', algorithm: 'sha256' as any });
+            expect(base32.decode(lowercaseSha256.secret)).toHaveLength(32);
+            expect(lowercaseSha256.uri).toContain('algorithm=SHA256');
         });
 
         it('should accept custom byteLength', () => {
@@ -104,9 +108,16 @@ describe('TOTP Library', () => {
             const { uri } = generateURI({
                 issuer: 'Test',
                 account: 'test',
-                secret: 'jbswy3dpehpk3pxp==', // lowercase + padding
+                secret: `${SECRET_BASE32.toLowerCase()}==`, // lowercase + padding
             });
-            expect(uri).toContain('secret=JBSWY3DPEHPK3PXP');
+            expect(uri).toContain(`secret=${SECRET_BASE32}`);
+        });
+
+        it('should reject new secrets shorter than 16 bytes', () => {
+            expect(() => generateURI({ issuer: 'Test', account: 'a', byteLength: 15 })).toThrow('at least 16');
+            expect(() => generateURI({ issuer: 'Test', account: 'a', secret: base32.encode(randomBytes(15)) })).toThrow('at least 16');
+            expect(() => totp.helpers.generateSecret(1)).toThrow('at least 16');
+            expect(base32.decode(generateURI({ issuer: 'Test', account: 'a', byteLength: 16 }).secret)).toHaveLength(16);
         });
 
         it('should reject secrets with embedded padding', () => {
@@ -120,8 +131,11 @@ describe('TOTP Library', () => {
         it('should validate inputs strictly', () => {
             expect(() => generateURI({ issuer: '', account: 'test' })).toThrow();
             expect(() => generateURI({ issuer: 'Test', account: '' })).toThrow();
+            expect(() => generateURI({ issuer: 'A:B', account: 'test' })).toThrow('Invalid issuer');
+            expect(() => generateURI({ issuer: 'Test', account: 'A:B' })).toThrow('Invalid account');
             expect(() => generateURI({ issuer: 'Test', account: 'test', algorithm: 'MD5' as any })).toThrow();
             expect(() => generateURI({ issuer: 'Test', account: 'test', digits: 5 as any })).toThrow();
+            expect(() => generateURI({ issuer: 'Test', account: 'test', digits: 7 as any })).toThrow('URI digits must be 6 or 8');
             expect(() => generateURI({ issuer: 'Test', account: 'test', period: -1 })).toThrow();
             expect(() => generateURI({ issuer: 'Test', account: 'test', byteLength: -5 })).toThrow();
         });
@@ -133,6 +147,10 @@ describe('TOTP Library', () => {
             });
             expect(uri).toContain('My%20App%20Inc.');
             expect(uri).toContain('user%2Btest%40example.com');
+
+            const expanded = generateURI({ issuer: 'Café & Co', account: 'Alice Smith' });
+            expect(expanded.uri).toContain('Caf%C3%A9%20%26%20Co:Alice%20Smith');
+            expect(new URL(expanded.uri).searchParams.get('issuer')).toBe('Café & Co');
         });
 
         it('should validate secret format strictly', () => {
@@ -171,7 +189,7 @@ describe('TOTP Library', () => {
             expect(() => generateURI({
                 issuer: 'Test',
                 account: 'test',
-                secret: 'JBSWY3DPEHPK3PXP'
+                secret: SECRET_BASE32
             })).not.toThrow();
 
             expect(() => generateURI({
@@ -193,6 +211,19 @@ describe('TOTP Library', () => {
             }
         });
 
+        it('should match RFC 6238 SHA256 and SHA512 vectors', () => {
+            const times = RFC6238_VECTORS.map(({ time }) => time);
+            const vectors = [
+                { algorithm: 'SHA256' as const, secret: '12345678901234567890123456789012', tokens: ['46119246', '68084774', '67062674', '91819424', '90698825', '77737706'] },
+                { algorithm: 'SHA512' as const, secret: '1234567890123456789012345678901234567890123456789012345678901234', tokens: ['90693936', '25091201', '99943326', '93441116', '38618901', '47863826'] },
+            ];
+            for (const { algorithm, secret, tokens } of vectors) {
+                times.forEach((time, index) => {
+                    expect(generateToken(Buffer.from(secret), Math.floor(time / 30), 8, algorithm)).toBe(tokens[index]);
+                });
+            }
+        });
+
         it('should support different algorithms and digits', () => {
             const secret = randomBytes(32);
             const counter = 12345;
@@ -211,6 +242,15 @@ describe('TOTP Library', () => {
             const secret = randomBytes(20);
             expect(() => generateToken(secret, -1, 6, 'SHA1')).toThrow();
             expect(() => generateToken(secret, Number.MAX_SAFE_INTEGER + 1, 6, 'SHA1')).toThrow();
+        });
+
+        it('should reject unsupported digits and algorithms at runtime', () => {
+            const secret = randomBytes(20);
+            expect(() => generateToken(secret, 1, 0 as any, 'SHA1')).toThrow('Invalid digits');
+            expect(() => generateToken(secret, 1, 9 as any, 'SHA1')).toThrow('Invalid digits');
+            expect(() => generateToken(secret, 1, 6, 'MD5' as any)).toThrow('Invalid algorithm');
+            const detached = totp.generateToken;
+            expect(detached(secret, 1, 6, 'SHA1')).toHaveLength(6);
         });
     });
 
@@ -293,6 +333,7 @@ describe('TOTP Library', () => {
 
         it('should validate options strictly', () => {
             expect(() => verifyToken('123456', SECRET_BASE32, { window: -1 })).toThrow();
+            expect(() => verifyToken('123456', SECRET_BASE32, { window: 3 })).toThrow('Window must be an integer from 0 to 2');
             expect(() => verifyToken('123456', SECRET_BASE32, { period: 0 })).toThrow();
             expect(() => verifyToken('123456', SECRET_BASE32, { algorithm: 'MD5' as any })).toThrow();
         });
@@ -303,10 +344,12 @@ describe('TOTP Library', () => {
             const time = counter * 30;
 
             const token6 = generateToken(base32.decode(secret), counter, 6, 'SHA1');
+            const token7 = generateToken(base32.decode(secret), counter, 7, 'SHA1');
             const token8 = generateToken(base32.decode(secret), counter, 8, 'SHA1');
 
             // Correct: match when digits option matches token length
             expect(verifyToken(token6, secret, { digits: 6, now: time })).toBe(true);
+            expect(verifyToken(token7, secret, { digits: 7, now: time })).toBe(true);
             expect(verifyToken(token8, secret, { digits: 8, now: time })).toBe(true);
 
             // Mismatch: token6 has 6 digits, but we expect 8 → should fail
@@ -354,22 +397,52 @@ describe('TOTP Library', () => {
 
     });
 
+    describe('verifyTokenOnce', () => {
+        it('should claim a matched counter once, including concurrent attempts', async () => {
+            const counter = 12345;
+            const token = generateToken(base32.decode(SECRET_BASE32), counter, 8, 'SHA1');
+            let latestAcceptedCounter = -1;
+            const claimCounter = async (matchedCounter: number): Promise<boolean> => {
+                if (matchedCounter <= latestAcceptedCounter) return false;
+                latestAcceptedCounter = matchedCounter;
+                return true;
+            };
+            const options = { digits: 8 as const, window: 0, now: counter * 30 };
+            const results = await Promise.all([
+                verifyTokenOnce(token, SECRET_BASE32, claimCounter, options),
+                verifyTokenOnce(token, SECRET_BASE32, claimCounter, options),
+            ]);
+            expect(results).toEqual([true, false]);
+            expect(latestAcceptedCounter).toBe(counter);
+        });
+
+        it('should refuse weak secrets and never claim invalid tokens', async () => {
+            const claimCounter = vi.fn(async () => true);
+            expect(await verifyTokenOnce('00000000', SECRET_BASE32, claimCounter, { digits: 8, window: 0, now: 59 })).toBe(false);
+            expect(claimCounter).not.toHaveBeenCalled();
+            const shortSecret = base32.encode(Buffer.from('short key')).replace(/=+$/, '');
+            const token = generateToken(base32.decode(shortSecret), 1, 8, 'SHA1');
+            await expect(verifyTokenOnce(token, shortSecret, claimCounter, { digits: 8, window: 0, now: 59 })).rejects.toThrow('at least 16');
+            expect(claimCounter).not.toHaveBeenCalled();
+        });
+    });
+
     describe('Integration', () => {
         it('should generate and verify a full flow', () => {
             const { secret } = generateURI({
                 issuer: 'IntegrationTest',
                 account: 'test@example.com',
                 algorithm: 'SHA256',
-                digits: 7,
+                digits: 8,
                 period: 45,
             });
 
             const now = Math.floor(Date.now() / 1000);
-            const token = generateToken(base32.decode(secret), Math.floor(now / 45), 7, 'SHA256');
+            const token = generateToken(base32.decode(secret), Math.floor(now / 45), 8, 'SHA256');
 
             const isValid = verifyToken(token, secret, {
                 algorithm: 'SHA256',
-                digits: 7,
+                digits: 8,
                 period: 45,
                 window: 1,
             });
