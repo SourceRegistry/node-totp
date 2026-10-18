@@ -1,3 +1,13 @@
+# [2.0.0](https://github.com/SourceRegistry/node-totp/compare/v1.0.8...v2.0.0) (2026-10-18)
+
+
+* feat!: enforce TOTP provisioning rules and add replay-safe verification ([4a489de](https://github.com/SourceRegistry/node-totp/commit/4a489de697b1a18f703f3b03f59b8902659f4b69))
+
+
+### BREAKING CHANGES
+
+* generateURI now rejects 7-digit setup URIs and secrets shorter than 16 bytes. Verification windows above two steps are rejected.
+
 ## [1.0.8](https://github.com/SourceRegistry/node-totp/compare/v1.0.7...v1.0.8) (2026-04-04)
 
 
